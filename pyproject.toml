@@ -1,0 +1,16 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = ["htmlcov", ".venv", "reports"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = [
+  "B008",  # FastAPI declara Depends y Query en firmas de rutas
+  "S101",  # assert se usa de forma intencional en pruebas
+  "S105",  # secretos ficticios en pruebas
+  "S106",  # contraseñas ficticias en argumentos de pruebas
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S"]

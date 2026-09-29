@@ -1,0 +1,69 @@
+name: CI CD RedSolidaria
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-quality:
+    name: Pruebas y calidad
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v6
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Revisar estilo y errores estáticos
+        run: ruff check app tests
+
+      - name: Ejecutar pruebas y exigir 80 por ciento de cobertura
+        env:
+          APP_ENV: test
+          JWT_SECRET: clave-segura-exclusiva-para-pruebas-123456
+        run: pytest
+
+      - name: Conservar reportes de pruebas
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: reportes-pruebas-unitarias
+          path: |
+            reports/evidencias/pruebas-unitarias/
+            htmlcov/
+          if-no-files-found: error
+
+  deploy-staging:
+    name: Desplegar en pruebas
+    needs: test-and-quality
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Solicitar despliegue en Render
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        run: curl --fail --silent --show-error --request POST "$RENDER_DEPLOY_HOOK_URL"
+
+      - name: Informar secreto faltante
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        if: env.RENDER_DEPLOY_HOOK_URL == ''
+        run: |
+          echo "No se desplegó: configura el secreto RENDER_DEPLOY_HOOK_URL."
+          exit 1
+

@@ -1,0 +1,53 @@
+name: Análisis SonarQube
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sonarqube:
+    name: Métricas y Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio con historial
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Generar cobertura antes del análisis
+        env:
+          APP_ENV: test
+          JWT_SECRET: clave-segura-exclusiva-para-pruebas-123456
+        run: pytest
+
+      - name: Ejecutar SonarQube
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        if: env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != ''
+        uses: SonarSource/sonarqube-scan-action@v7
+
+      - name: Informar configuración pendiente
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        if: env.SONAR_TOKEN == '' || env.SONAR_HOST_URL == ''
+        run: |
+          echo "Configura SONAR_TOKEN y SONAR_HOST_URL para ejecutar el análisis."
+          exit 1
+

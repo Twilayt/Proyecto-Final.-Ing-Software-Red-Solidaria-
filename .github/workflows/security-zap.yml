@@ -1,0 +1,82 @@
+name: Seguridad OWASP ZAP
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  zap-scan:
+    name: Escaneo API y documentación
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v6
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar aplicación
+        run: pip install -r requirements.txt
+
+      - name: Iniciar API de prueba
+        env:
+          APP_ENV: test
+          DATABASE_URL: sqlite:///./zap-test.db
+          JWT_SECRET: clave-segura-exclusiva-para-zap-12345678
+        run: |
+          mkdir -p reports/evidencias/owasp-zap
+          chmod -R 777 reports/evidencias/owasp-zap
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/redsolidaria.log 2>&1 &
+          for i in {1..30}; do
+            curl --fail --silent http://127.0.0.1:8000/health && exit 0
+            sleep 1
+          done
+          cat /tmp/redsolidaria.log
+          exit 1
+
+      - name: Escanear contrato OpenAPI para SQLi y fallos de API
+        id: zap_api
+        continue-on-error: true
+        run: |
+          docker run --network host \
+            -v "${{ github.workspace }}/reports/evidencias/owasp-zap:/zap/wrk/:rw" \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-api-scan.py \
+            -t http://127.0.0.1:8000/openapi.json \
+            -f openapi -I \
+            -r zap-api-report.html \
+            -J zap-api-report.json \
+            -w zap-api-report.md
+
+      - name: Escanear Swagger UI para XSS y alertas web
+        id: zap_web
+        continue-on-error: true
+        run: |
+          docker run --network host \
+            -v "${{ github.workspace }}/reports/evidencias/owasp-zap:/zap/wrk/:rw" \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-full-scan.py \
+            -t http://127.0.0.1:8000/docs -m 1 -T 10 -I \
+            -r zap-web-report.html \
+            -J zap-web-report.json \
+            -w zap-web-report.md
+
+      - name: Conservar evidencia ZAP
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: reportes-owasp-zap
+          path: reports/evidencias/owasp-zap/
+          if-no-files-found: error
+
+      - name: Aplicar puerta para alertas de riesgo alto
+        if: always()
+        run: python scripts/check_zap_report.py reports/evidencias/owasp-zap
+

@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: redsolidaria
+      POSTGRES_USER: redsolidaria
+      POSTGRES_PASSWORD: redsolidaria_local
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U redsolidaria -d redsolidaria"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://redsolidaria:redsolidaria_local@db:5432/redsolidaria
+      JWT_SECRET: clave-local-cambiar-antes-de-publicar-123456
+      ADMIN_EMAIL: admin@redsolidaria.local
+      ADMIN_PASSWORD: Cambiar123!
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+
